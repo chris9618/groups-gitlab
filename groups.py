@@ -17,37 +17,52 @@ def get_subgroups(group_id):
     return response.json()
 
 # Recursive function to get all nested subgroups
-def get_all_subgroups(group_id, parent_path=""):
+def get_all_subgroups(group_id, root_group_name, level=0):
     subgroups = get_subgroups(group_id)
     all_subgroups = []
 
     for subgroup in subgroups:
-        subgroup_path = f"{parent_path} / {subgroup['name']}".strip(' /')
-        all_subgroups.append({
-            "Group ID": subgroup["id"],
-            "Group Name": subgroup["name"],
-            "Hierarchical Path": subgroup_path
-        })
-        nested_subgroups = get_all_subgroups(subgroup["id"], subgroup_path)
+        subgroup_details = {
+            "Root Group Name": root_group_name,
+            "Level": level,
+            f"Level {level} Group Name": subgroup["name"],
+        }
+        all_subgroups.append(subgroup_details)
+        nested_subgroups = get_all_subgroups(subgroup["id"], root_group_name, level + 1)
         all_subgroups.extend(nested_subgroups)
 
     return all_subgroups
 
 # Main script execution
 if __name__ == "__main__":
-    # Fetch the root group name
+    # Fetch the root group details
     root_group_response = requests.get(f"{GITLAB_API_URL}/groups/{ROOT_GROUP_ID}", headers={"PRIVATE-TOKEN": ACCESS_TOKEN})
     root_group_response.raise_for_status()
-    root_group_name = root_group_response.json()['name']
+    root_group = root_group_response.json()
+    root_group_name = root_group['name']
     
     all_subgroups = get_all_subgroups(ROOT_GROUP_ID, root_group_name)
 
-    # Create a pandas DataFrame and display the table
+    # Convert list of dictionaries to DataFrame
     df = pd.DataFrame(all_subgroups)
-    df.columns = ["Group ID", "Group Name", "Hierarchical Path"]
-    pd.set_option('display.max_rows', None)  # Display all rows
-    pd.set_option('display.max_colwidth', None)  # Display full column content
 
+    # Fill missing columns to avoid KeyError in DataFrame creation
+    max_level = df["Level"].max()
+    for level in range(max_level + 1):
+        df[f"Level {level} Group Name"] = df.get(f"Level {level} Group Name", "")
+
+    # Drop the Level column as it's no longer needed
+    df = df.drop(columns=["Level"])
+
+    # Replace NaN values with blank spaces
+    df = df.fillna("")
+
+    # Display all rows and full column content
+    pd.set_option('display.max_rows', None)
+    pd.set_option('display.max_colwidth', None)
+
+    # Print DataFrame
     print(df)
+
     # Save the DataFrame to an Excel file
     df.to_excel("subgroups_details.xlsx", index=False)
