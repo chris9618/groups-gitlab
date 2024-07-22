@@ -21,7 +21,7 @@ def get_subgroups(group_id, page=1):
     return response.json(), response.headers
 
 # Recursive function to get all nested subgroups
-def get_all_subgroups(group_id, parent_info=[], level=0):
+def get_all_subgroups(group_id, parent_info=[], level=0, count=0):
     all_subgroups = []
     page = 1
     while True:
@@ -34,13 +34,15 @@ def get_all_subgroups(group_id, parent_info=[], level=0):
                 "Hierarchical Path": " / ".join(current_info)
             }
             all_subgroups.append(subgroup_details)
-            nested_subgroups = get_all_subgroups(subgroup["id"], current_info, level + 1)
+            count += 1
+            nested_subgroups, nested_count = get_all_subgroups(subgroup["id"], current_info, level + 1, count)
             all_subgroups.extend(nested_subgroups)
+            count = nested_count
         if 'X-Next-Page' in headers and headers['X-Next-Page']:
             page = int(headers['X-Next-Page'])
         else:
             break
-    return all_subgroups
+    return all_subgroups, count
 
 # Main script execution
 if __name__ == "__main__":
@@ -50,7 +52,7 @@ if __name__ == "__main__":
     root_group = root_group_response.json()
     root_group_name = root_group['name']
     
-    all_subgroups = get_all_subgroups(ROOT_GROUP_ID, [root_group_name], 0)
+    all_subgroups, total_count = get_all_subgroups(ROOT_GROUP_ID, [root_group_name], 0)
 
     # Convert list of dictionaries to DataFrame
     df = pd.DataFrame(all_subgroups)
@@ -72,3 +74,6 @@ if __name__ == "__main__":
 
     # Save the DataFrame to an Excel file
     df.to_excel("subgroups_details.xlsx", index=False)
+
+    # Print total count of subgroups
+    print(f"Total number of subgroups: {total_count}")
