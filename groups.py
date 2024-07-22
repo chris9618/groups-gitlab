@@ -9,28 +9,37 @@ ACCESS_TOKEN = "token"
 ROOT_GROUP_ID = "12345"
 
 # Function to get subgroups of a given group
-def get_subgroups(group_id):
+def get_subgroups(group_id, page=1):
     url = f"{GITLAB_API_URL}/groups/{group_id}/subgroups"
     headers = {"PRIVATE-TOKEN": ACCESS_TOKEN}
-    response = requests.get(url, headers=headers)
+    params = {
+        "per_page": PER_PAGE,
+        "page": page
+    }
+    response = requests.get(url, headers=headers, params=params)
     response.raise_for_status()
-    return response.json()
+    return response.json(), response.headers
 
 # Recursive function to get all nested subgroups
-def get_all_subgroups(group_id, root_group_name, level=0):
-    subgroups = get_subgroups(group_id)
+def get_all_subgroups(group_id, parent_info=[], level=0):
     all_subgroups = []
-
-    for subgroup in subgroups:
-        subgroup_details = {
-            "Root Group Name": root_group_name,
-            "Level": level,
-            f"Level {level} Group Name": subgroup["name"],
-        }
-        all_subgroups.append(subgroup_details)
-        nested_subgroups = get_all_subgroups(subgroup["id"], root_group_name, level + 1)
-        all_subgroups.extend(nested_subgroups)
-
+    page = 1
+    while True:
+        subgroups, headers = get_subgroups(group_id, page)
+        for subgroup in subgroups:
+            current_info = parent_info + [subgroup["name"]]
+            subgroup_details = {
+                "Level": level,
+                **{f"Level {i} Group Name": name for i, name in enumerate(current_info)},
+                "Hierarchical Path": " / ".join(current_info)
+            }
+            all_subgroups.append(subgroup_details)
+            nested_subgroups = get_all_subgroups(subgroup["id"], current_info, level + 1)
+            all_subgroups.extend(nested_subgroups)
+        if 'X-Next-Page' in headers and headers['X-Next-Page']:
+            page = int(headers['X-Next-Page'])
+        else:
+            break
     return all_subgroups
 
 # Main script execution
@@ -41,7 +50,7 @@ if __name__ == "__main__":
     root_group = root_group_response.json()
     root_group_name = root_group['name']
     
-    all_subgroups = get_all_subgroups(ROOT_GROUP_ID, root_group_name)
+    all_subgroups = get_all_subgroups(ROOT_GROUP_ID, [root_group_name], 0)
 
     # Convert list of dictionaries to DataFrame
     df = pd.DataFrame(all_subgroups)
@@ -53,9 +62,6 @@ if __name__ == "__main__":
 
     # Drop the Level column as it's no longer needed
     df = df.drop(columns=["Level"])
-
-    # Replace NaN values with blank spaces
-    df = df.fillna("")
 
     # Display all rows and full column content
     pd.set_option('display.max_rows', None)
