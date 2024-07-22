@@ -21,28 +21,33 @@ def get_subgroups(group_id, page=1):
     return response.json(), response.headers
 
 # Recursive function to get all nested subgroups
-def get_all_subgroups(group_id, parent_info=[], level=0, count=0):
+def get_all_subgroups(group_id, parent_info=[], level=0, is_level_1=False):
     all_subgroups = []
+    total_count = 0
     page = 1
     while True:
         subgroups, headers = get_subgroups(group_id, page)
         for subgroup in subgroups:
+            if level == 1:
+                is_level_1 = True
+
             current_info = parent_info + [subgroup["name"]]
+            if not is_level_1:
+                total_count += 1
+
             subgroup_details = {
-                "Level": level,
-                **{f"Level {i} Group Name": name for i, name in enumerate(current_info)},
+                "Level 1 Group Name": parent_info[0] if parent_info else "",
                 "Hierarchical Path": " / ".join(current_info)
             }
             all_subgroups.append(subgroup_details)
-            count += 1
-            nested_subgroups, nested_count = get_all_subgroups(subgroup["id"], current_info, level + 1, count)
+            nested_subgroups, nested_count = get_all_subgroups(subgroup["id"], current_info, level + 1, is_level_1)
             all_subgroups.extend(nested_subgroups)
-            count = nested_count
+            total_count += nested_count
         if 'X-Next-Page' in headers and headers['X-Next-Page']:
             page = int(headers['X-Next-Page'])
         else:
             break
-    return all_subgroups, count
+    return all_subgroups, total_count
 
 # Main script execution
 if __name__ == "__main__":
@@ -57,14 +62,6 @@ if __name__ == "__main__":
     # Convert list of dictionaries to DataFrame
     df = pd.DataFrame(all_subgroups)
 
-    # Fill missing columns to avoid KeyError in DataFrame creation
-    max_level = df["Level"].max()
-    for level in range(max_level + 1):
-        df[f"Level {level} Group Name"] = df.get(f"Level {level} Group Name", "")
-
-    # Drop the Level column as it's no longer needed
-    df = df.drop(columns=["Level"])
-
     # Display all rows and full column content
     pd.set_option('display.max_rows', None)
     pd.set_option('display.max_colwidth', None)
@@ -76,4 +73,4 @@ if __name__ == "__main__":
     df.to_excel("subgroups_details.xlsx", index=False)
 
     # Print total count of subgroups
-    print(f"Total number of subgroups: {total_count}")
+    print(f"Total number of subgroups excluding level 1 group names: {total_count}")
